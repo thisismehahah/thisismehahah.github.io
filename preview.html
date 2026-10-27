@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obsidian Canvas Viewer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: {
+                            bg: '#1e1e1e',
+                            panel: '#252526',
+                            border: '#333333',
+                            hover: '#2a2d2e',
+                            accent: '#7c3aed',
+                            text: '#d4d4d4',
+                            muted: '#858585'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+        .canvas-grid {
+            background-image: radial-gradient(circle, rgba(128, 128, 128, 0.15) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .light .canvas-grid {
+            background-image: radial-gradient(circle, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(128, 128, 128, 0.3);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(128, 128, 128, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-[#1e1e1e] text-[#d4d4d4] h-screen w-screen flex flex-col overflow-hidden transition-colors duration-200">
+
+    <!-- Top Navigation / Toolbar -->
+    <header class="h-14 bg-[#252526] border-b border-[#333333] flex items-center justify-between px-4 z-30 select-none shadow-md">
+        <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 bg-[#7c3aed] text-white px-3 py-1.5 rounded-lg shadow-sm font-semibold text-sm">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                <span>Canvas Viewer</span>
+            </div>
+            <span id="canvas-title" class="text-sm font-medium text-zinc-300 truncate max-w-xs">Sample Project.canvas</span>
+            <span id="node-count" class="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-700">0 nodes</span>
+        </div>
+
+        <!-- Toolbar Controls -->
+        <div class="flex items-center space-x-2">
+            <!-- Search Filter -->
+            <div class="relative flex items-center">
+                <i data-lucide="search" class="w-4 h-4 absolute left-2.5 text-zinc-400"></i>
+                <input type="text" id="search-input" placeholder="Search nodes..." 
+                    class="bg-[#1e1e1e] border border-[#333333] text-xs rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-[#7c3aed] w-40 sm:w-56 text-zinc-200 placeholder-zinc-500 transition-all">
+                <button id="clear-search" class="absolute right-2 text-zinc-500 hover:text-zinc-300 hidden text-xs">&times;</button>
+            </div>
+
+            <div class="h-5 w-[1px] bg-zinc-700 mx-1"></div>
+
+            <!-- Viewport Controls -->
+            <div class="flex items-center bg-[#1e1e1e] border border-[#333333] rounded-lg p-0.5 shadow-sm">
+                <button id="btn-zoom-out" title="Zoom Out" class="p-1.5 hover:bg-[#2a2d2e] rounded text-zinc-300 transition-colors">
+                    <i data-lucide="zoom-out" class="w-4 h-4"></i>
+                </button>
+                <span id="zoom-level" class="text-xs px-2 font-mono text-zinc-400 min-w-[50px] text-center">100%</span>
+                <button id="btn-zoom-in" title="Zoom In" class="p-1.5 hover:bg-[#2a2d2e] rounded text-zinc-300 transition-colors">
+                    <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <button id="btn-fit" title="Fit to Screen" class="flex items-center space-x-1 px-2.5 py-1.5 bg-[#1e1e1e] hover:bg-[#2a2d2e] border border-[#333333] rounded-lg text-xs font-medium text-zinc-300 shadow-sm transition-colors">
+                <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
+                <span class="hidden md:inline">Fit</span>
+            </button>
+
+            <button id="btn-reset" title="Reset View" class="p-1.5 bg-[#1e1e1e] hover:bg-[#2a2d2e] border border-[#333333] rounded-lg text-zinc-300 shadow-sm transition-colors">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            </button>
+
+            <div class="h-5 w-[1px] bg-zinc-700 mx-1"></div>
+
+            <!-- File Actions -->
+            <label title="Open .canvas file" class="flex items-center space-x-1.5 px-3 py-1.5 bg-[#7c3aed] hover:bg-[#6d28d9] text-white rounded-lg text-xs font-medium cursor-pointer shadow-sm transition-colors">
+                <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
+                <span>Open File</span>
+                <input type="file" id="file-input" accept=".canvas" class="hidden">
+            </label>
+
+            <button id="btn-sample" title="Load Sample Canvas" class="flex items-center space-x-1 px-3 py-1.5 bg-[#1e1e1e] hover:bg-[#2a2d2e] border border-[#333333] rounded-lg text-xs font-medium text-zinc-300 shadow-sm transition-colors">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span class="hidden lg:inline">Sample</span>
+            </button>
+
+            <!-- Theme Toggle -->
+            <button id="btn-theme" title="Toggle Theme" class="p-1.5 bg-[#1e1e1e] hover:bg-[#2a2d2e] border border-[#333333] rounded-lg text-zinc-300 shadow-sm transition-colors">
+                <i data-lucide="sun" id="theme-icon" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <div id="viewport" class="relative flex-1 overflow-hidden canvas-grid cursor-grab active:cursor-grabbing">
+        
+        <!-- Canvas World (Translated and Scaled) -->
+        <div id="canvas-world" class="absolute top-0 left-0 w-0 h-0 origin-top-left transition-transform duration-75 ease-out">
+            
+            <!-- SVG Layer for Edges -->
+            <svg id="edges-svg" class="absolute top-0 left-0 overflow-visible pointer-events-none" style="width: 0; height: 0;">
+                <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 10 5 L 0 9 z" fill="#71717a" class="edge-arrow-fill"></path>
+                    </marker>
+                    <marker id="arrow-active" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 10 5 L 0 9 z" fill="#7c3aed"></path>
+                    </marker>
+                </defs>
+                <g id="edges-group"></g>
+            </svg>
+
+            <!-- HTML Layer for Nodes -->
+            <div id="nodes-container" class="absolute top-0 left-0 w-0 h-0 overflow-visible"></div>
+        </div>
+
+        <!-- Drag & Drop Overlay -->
+        <div id="drop-overlay" class="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center hidden pointer-events-none border-4 border-dashed border-purple-500 m-4 rounded-2xl">
+            <i data-lucide="upload-cloud" class="w-16 h-16 text-purple-400 animate-bounce mb-3"></i>
+            <h2 class="text-xl font-bold text-white">Drop your .canvas file here</h2>
+            <p class="text-sm text-zinc-400 mt-1">Release to load and render instantly</p>
+        </div>
+
+        <!-- Floating Quick Help / Info -->
+        <div class="absolute bottom-4 left-4 bg-[#252526]/90 backdrop-blur border border-[#333333] px-3 py-2 rounded-xl text-xs text-zinc-400 shadow-lg pointer-events-none flex items-center space-x-3 z-20">
+            <span class="flex items-center space-x-1"><i data-lucide="move" class="w-3.5 h-3.5"></i><span>Drag to Pan</span></span>
+            <span>•</span>
+            <span class="flex items-center space-x-1"><i data-lucide="zoom-in" class="w-3.5 h-3.5"></i><span>Scroll to Zoom</span></span>
+            <span>•</span>
+            <span class="flex items-center space-x-1"><i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5"></i><span>Click node to inspect</span></span>
+        </div>
+    </div>
+
+    <!-- Inspector Side Panel -->
+    <aside id="inspector-panel" class="absolute top-14 right-0 bottom-0 w-80 bg-[#252526] border-l border-[#333333] z-40 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col shadow-2xl">
+        <div class="h-12 border-b border-[#333333] px-4 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="info" class="w-4 h-4 text-purple-400"></i>
+                <span class="text-sm font-semibold text-zinc-200">Node Inspector</span>
+            </div>
+            <button id="close-inspector" class="p-1 hover:bg-[#333333] rounded text-zinc-400 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+        <div id="inspector-content" class="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-mono">
+            <!-- Dynamically populated -->
+        </div>
+    </aside>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="absolute bottom-6 right-6 bg-[#252526] border border-[#333333] text-zinc-200 px-4 py-3 rounded-xl shadow-2xl z-50 transform translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-3 text-sm">
+        <i data-lucide="check-circle-2" id="toast-icon" class="w-5 h-5 text-emerald-400"></i>
+        <span id="toast-message">Notification message</span>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // --- State Management ---
+        let canvasData = { nodes: [], edges: [] };
+        let panX = 0;
+        let panY = 0;
+        let scale = 1;
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+        let selectedNodeId = null;
+        let searchQuery = '';
+        let isDarkTheme = true;
+
+        // --- Built-in Sample Canvas Data ---
+        const sampleCanvas = {
+            "nodes": [
+                {
+                    "id": "group-1",
+                    "x": -350,
+                    "y": -280,
+                    "width": 450,
+                    "height": 380,
+                    "label": "🧠 Core Architecture & Research",
+                    "color": "3"
+                },
+                {
+                    "id": "node-1",
+                    "x": -310,
+                    "y": -210,
+                    "width": 370,
+                    "height": 280,
+                    "type": "text",
+                    "text": "# Welcome to Obsidian Canvas Viewer\n\nThis is a fully functional, interactive viewer for **.canvas** JSON files built with vanilla JS and Tailwind CSS.\n\n### Key Features:\n- **Interactive Viewport**: Smooth pan and zoom\n- **Rich Nodes**: Text notes, Groups, Files & Links\n- **Curved SVG Edges**: With arrows & labels\n- **Node Inspector**: Click any card for details\n- **Search Filter**: Instantly locate nodes\n\n> Try dragging this canvas around or scrolling to zoom!"
+                },
+                {
+                    "id": "node-2",
+                    "x": 160,
+                    "y": -280,
+                    "width": 340,
+                    "height": 220,
+                    "type": "text",
+                    "text": "## 🚀 Getting Started\n\n1. Click **Open File** in the top bar to upload your own `.canvas` file.\n2. Or drag & drop any `.canvas` file directly onto this window.\n3. Click any node to open the side inspector panel and view raw properties.",
+                    "color": "4"
+                },
+                {
+                    "id": "node-3",
+                    "x": 160,
+                    "y": -40,
+                    "width": 340,
+                    "height": 140,
+                    "type": "link",
+                    "url": "https://obsidian.md",
+                    "color": "5"
+                },
+                {
+                    "id": "node-4",
+                    "x": -350,
+                    "y": 140,
+                    "width": 850,
+                    "height": 180,
+                    "type": "text",
+                    "text": "### 💡 Tips & Shortcuts\n- Use **Fit** button to automatically frame all nodes on screen.\n- Use the **Search Bar** above to highlight specific topics across your canvas.\n- Built with responsive design principles for seamless viewing.",
+                    "color": "1"
+                }
+            ],
+            "edges": [
+                {
+                    "id": "edge-1",
+                    "fromNode": "node-1",
+                    "fromSide": "right",
+                    "toNode": "node-2",
+                    "toSide": "left",
+                    "label": "Next Step",
+                    "color": "2"
+                },
+                {
+                    "id": "edge-2",
+                    "fromNode": "node-2",
+                    "fromSide": "bottom",
+                    "toNode": "node-3",
+                    "toSide": "top",
+                    "label": "Documentation"
+                },
+                {
+                    "id": "edge-3",
+                    "fromNode": "node-1",
+                    "fromSide": "bottom",
+                    "toNode": "node-4",
+                    "toSide": "top",
+                    "label": "Overview"
+                }
+            ]
+        };
+
+        // --- Obsidian Color Palette Mapping ---
+        const obsidianColors = {
+            "1": { bg: "rgba(239, 68, 68, 0.12)", border: "#ef4444", text: "#fca5a5" }, // Red
+            "2": { bg: "rgba(249, 115, 22, 0.12)", border: "#f97316", text: "#fdba74" }, // Orange
+            "3": { bg: "rgba(234, 179, 8, 0.12)", border: "#eab308", text: "#fde047" },  // Yellow
+            "4": { bg: "rgba(34, 197, 94, 0.12)", border: "#22c55e", text: "#86efac" },  // Green
+            "5": { bg: "rgba(6, 182, 212, 0.12)", border: "#06b6d4", text: "#67e8f9" },  // Cyan
+            "6": { bg: "rgba(168, 85, 247, 0.12)", border: "#a855f7", text: "#d8b4fe" }  // Purple
+        };
+
+        // --- DOM Elements ---
+        const viewport = document.getElementById('viewport');
+        const canvasWorld = document.getElementById('canvas-world');
+        const nodesContainer = document.getElementById('nodes-container');
+        const edgesGroup = document.getElementById('edges-group');
+        const edgesSvg = document.getElementById('edges-svg');
+        const zoomLevelEl = document.getElementById('zoom-level');
+        const canvasTitleEl = document.getElementById('canvas-title');
+        const nodeCountEl = document.getElementById('node-count');
+        const inspectorPanel = document.getElementById('inspector-panel');
+        const inspectorContent = document.getElementById('inspector-content');
+        const searchInput = document.getElementById('search-input');
+        const clearSearchBtn = document.getElementById('clear-search');
+        const dropOverlay = document.getElementById('drop-overlay');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+
+        // --- Initialization ---
+        window.addEventListener('DOMContentLoaded', () => {
+            loadCanvasData(sampleCanvas, "Sample Project.canvas");
+            lucide.createIcons();
+            setupEventListeners();
+        });
+
+        function showToast(message, type = 'success') {
+            toastMessage.textContent = message;
+            const icon = document.getElementById('toast-icon');
+            if (type === 'success') {
+                icon.className = 'w-5 h-5 text-emerald-400';
+                icon.setAttribute('data-lucide', 'check-circle-2');
+            } else {
+                icon.className = 'w-5 h-5 text-amber-400';
+                icon.setAttribute('data-lucide', 'alert-circle');
+            }
+            lucide.createIcons();
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3500);
+        }
+
+        // --- Load & Parse Canvas Data ---
+        function loadCanvasData(data, filename) {
+            if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+                showToast("Invalid .canvas file format.", "error");
+                return;
+            }
+            canvasData = data;
+            canvasTitleEl.textContent = filename;
+            nodeCountEl.textContent = `${canvasData.nodes.length} nodes`;
+            
+            renderCanvas();
+            fitToScreen();
+            showToast(`Loaded ${filename} successfully!`);
+        }
+
+        // --- Rendering Engine ---
+        function renderCanvas() {
+            nodesContainer.innerHTML = '';
+            edgesGroup.innerHTML = '';
+
+            // Sort nodes: groups first (background), then others
+            const sortedNodes = [...canvasData.nodes].sort((a, b) => {
+                if (a.type === 'group' && b.type !== 'group') return -1;
+                if (a.type !== 'group' && b.type === 'group') return 1;
+                return 0;
+            });
+
+            // Render Groups first
+            sortedNodes.forEach(node => {
+                if (node.type === 'group') {
+                    renderGroupNode(node);
+                }
+            });
+
+            // Render Standard Nodes
+            sortedNodes.forEach(node => {
+                if (node.type !== 'group') {
+                    renderStandardNode(node);
+                }
+            });
+
+            // Render Edges
+            renderEdges();
+        }
+
+        function renderGroupNode(node) {
+            const el = document.createElement('div');
+            el.className = `absolute rounded-2xl border-2 transition-all duration-150 flex flex-col p-4 ${selectedNodeId === node.id ? 'ring-2 ring-purple-500 shadow-xl' : ''}`;
+            el.style.left = `${node.x}px`;
+            el.style.top = `${node.y}px`;
+            el.style.width = `${node.width}px`;
+            el.style.height = `${node.height}px`;
+
+            let colorStyle = obsidianColors[node.color] || { bg: 'rgba(50, 50, 50, 0.15)', border: '#444444', text: '#e2e8f0' };
+            el.style.backgroundColor = colorStyle.bg;
+            el.style.borderColor = colorStyle.border;
+
+            // Search filter check
+            if (searchQuery && !node.label?.toLowerCase().includes(searchQuery.toLowerCase())) {
+                el.classList.add('opacity-25', 'grayscale');
+            }
+
+            if (node.label) {
+                const labelEl = document.createElement('div');
+                labelEl.className = 'font-semibold text-sm mb-2 select-none flex items-center space-x-2';
+                labelEl.style.color = colorStyle.text;
+                labelEl.innerHTML = `<i data-lucide="folder" class="w-4 h-4"></i><span>${escapeHtml(node.label)}</span>`;
+                el.appendChild(labelEl);
+            }
+
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectNode(node);
+            });
+
+            nodesContainer.appendChild(el);
+        }
+
+        function renderStandardNode(node) {
+            const el = document.createElement('div');
+            el.className = `absolute rounded-xl bg-[#252526] border border-[#383838] shadow-lg p-4 overflow-hidden flex flex-col transition-all duration-150 hover:border-zinc-500 ${selectedNodeId === node.id ? 'ring-2 ring-purple-500 border-purple-500 shadow-2xl z-20' : 'z-10'}`;
+            el.style.left = `${node.x}px`;
+            el.style.top = `${node.y}px`;
+            el.style.width = `${node.width}px`;
+            el.style.height = `${node.height}px`;
+
+            if (node.color && obsidianColors[node.color]) {
+                el.style.borderColor = obsidianColors[node.color].border;
+            }
+
+            // Search filter check
+            let contentString = node.text || node.url || node.file || '';
+            if (searchQuery && !contentString.toLowerCase().includes(searchQuery.toLowerCase())) {
+                el.classList.add('opacity-20', 'grayscale');
+            }
+
+            const innerContainer = document.createElement('div');
+            innerContainer.className = 'flex-1 overflow-y-auto text-sm text-zinc-300 space-y-2 pr-1';
+
+            if (node.type === 'text' || !node.type) {
+                innerContainer.innerHTML = parseMarkdown(node.text || '');
+            } else if (node.type === 'link') {
+                innerContainer.innerHTML = `
+                    <div class="flex items-center space-x-2 text-purple-400 font-medium mb-1">
+                        <i data-lucide="external-link" class="w-4 h-4"></i>
+                        <span class="text-xs uppercase tracking-wider font-bold">Web Link</span>
+                    </div>
+                    <a href="${node.url}" target="_blank" class="text-blue-400 underline hover:text-blue-300 break-all text-xs font-mono block">${escapeHtml(node.url)}</a>
+                `;
+            } else if (node.type === 'file') {
+                innerContainer.innerHTML = `
+                    <div class="flex items-center space-x-2 text-amber-400 font-medium mb-1">
+                        <i data-lucide="file-text" class="w-4 h-4"></i>
+                        <span class="text-xs uppercase tracking-wider font-bold">File Node</span>
+                    </div>
+                    <div class="text-zinc-200 font-medium text-xs">${escapeHtml(node.file)}</div>
+                    ${node.subpath ? `<div class="text-xs text-zinc-500 font-mono"># ${escapeHtml(node.subpath)}</div>` : ''}
+                `;
+            }
+
+            el.appendChild(innerContainer);
+
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectNode(node);
+            });
+
+            nodesContainer.appendChild(el);
+        }
+
+        function renderEdges() {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            canvasData.nodes.forEach(n => {
+                minX = Math.min(minX, n.x);
+                minY = Math.min(minY, n.y);
+                maxX = Math.max(maxX, n.x + n.width);
+                maxY = Math.max(maxY, n.y + n.height);
+            });
+
+            // Expand SVG bounding box to cover all nodes
+            const padding = 200;
+            const svgX = minX - padding;
+            const svgY = minY - padding;
+            const svgW = (maxX - minX) + padding * 2;
+            const svgH = (maxY - minY) + padding * 2;
+
+            edgesSvg.style.left = `${svgX}px`;
+            edgesSvg.style.top = `${svgY}px`;
+            edgesSvg.style.width = `${svgW}px`;
+            edgesSvg.style.height = `${svgH}px`;
+            edgesSvg.setAttribute('viewBox', `${svgX} ${svgY} ${svgW} ${svgH}`);
+
+            canvasData.edges.forEach(edge => {
+                const fromNode = canvasData.nodes.find(n => n.id === edge.fromNode);
+                const toNode = canvasData.nodes.find(n => n.id === edge.toNode);
+                if (!fromNode || !toNode) return;
+
+                const fromPt = getNodeAnchorPoint(fromNode, edge.fromSide || 'right');
+                const toPt = getNodeAnchorPoint(toNode, edge.toSide || 'left');
+
+                // Compute cubic bezier control points for smooth curves
+                const dx = Math.abs(toPt.x - fromPt.x) * 0.5;
+                const dy = Math.abs(toPt.y - fromPt.y) * 0.5;
+                let cp1x = fromPt.x, cp1y = fromPt.y;
+                let cp2x = toPt.x, cp2y = toPt.y;
+
+                switch (edge.fromSide) {
+                    case 'right': cp1x += Math.max(dx, 40); break;
+                    case 'left': cp1x -= Math.max(dx, 40); break;
+                    case 'top': cp1y -= Math.max(dy, 40); break;
+                    case 'bottom': cp1y += Math.max(dy, 40); break;
+                }
+                switch (edge.toSide) {
+                    case 'right': cp2x += Math.max(dx, 40); break;
+                    case 'left': cp2x -= Math.max(dx, 40); break;
+                    case 'top': cp2y -= Math.max(dy, 40); break;
+                    case 'bottom': cp2y += Math.max(dy, 40); break;
+                }
+
+                const pathString = `M ${fromPt.x} ${fromPt.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${toPt.x} ${toPt.y}`;
+                
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                
+                // Edge line shadow/hitbox
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', pathString);
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke', edge.color && obsidianColors[edge.color] ? obsidianColors[edge.color].border : '#71717a');
+                path.setAttribute('stroke-width', '2.5');
+                path.setAttribute('marker-end', 'url(#arrow)');
+                path.classList.add('transition-all', 'duration-150');
+
+                if (selectedNodeId === fromNode.id || selectedNodeId === toNode.id) {
+                    path.setAttribute('stroke', '#7c3aed');
+                    path.setAttribute('stroke-width', '3.5');
+                    path.setAttribute('marker-end', 'url(#arrow-active)');
+                }
+
+                g.appendChild(path);
+
+                // Optional Edge Label
+                if (edge.label) {
+                    const midX = (fromPt.x + toPt.x) / 2;
+                    const midY = (fromPt.y + toPt.y) / 2;
+                    
+                    const foreignObj = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    foreignObj.setAttribute('x', midX - 60);
+                    foreignObj.setAttribute('y', midY - 14);
+                    foreignObj.setAttribute('width', '120');
+                    foreignObj.setAttribute('height', '28');
+                    foreignObj.innerHTML = `
+                        <div xmlns="http://www.w3.org/1999/xhtml" class="flex items-center justify-center">
+                            <span class="bg-[#252526] border border-[#383838] text-[10px] font-medium text-zinc-300 px-2 py-0.5 rounded-full shadow-md truncate max-w-[110px]">
+                                ${escapeHtml(edge.label)}
+                            </span>
+                        </div>
+                    `;
+                    g.appendChild(foreignObj);
+                }
+
+                edgesGroup.appendChild(g);
+            });
+        }
+
+        function getNodeAnchorPoint(node, side) {
+            const x = node.x;
+            const y = node.y;
+            const w = node.width;
+            const h = node.height;
+
+            switch (side) {
+                case 'top': return { x: x + w / 2, y: y };
+                case 'bottom': return { x: x + w / 2, y: y + h };
+                case 'left': return { x: x, y: y + h / 2 };
+                case 'right': return { x: x + w, y: y + h / 2 };
+                default: return { x: x + w / 2, y: y + h / 2 };
+            }
+        }
+
+        // --- Markdown Mini-Parser ---
+        function parseMarkdown(text) {
+            if (!text) return '';
+            let html = escapeHtml(text);
+            html = html.replace(/^### (.*$)/gim, '<h3 class="text-sm font-bold mb-1 text-zinc-100">$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2 class="text-base font-bold mb-1 text-white">$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1 class="text-lg font-bold mb-2 text-white">$1</h1>');
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-white">$1</strong>');
+            html = html.replace(/\*(.*?)\*/g, '<em class="italic text-zinc-300">$1</em>');
+            html = html.replace(/&gt; (.*$)/gim, '<blockquote class="border-l-2 border-purple-500 pl-3 italic text-zinc-400 my-1">$1</blockquote>');
+            html = html.replace(/`(.*?)`/g, '<code class="bg-[#1e1e1e] px-1 py-0.5 rounded text-xs font-mono text-amber-300 border border-[#333]">$1</code>');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // --- Inspector Panel ---
+        function selectNode(node) {
+            selectedNodeId = node.id;
+            renderCanvas();
+
+            inspectorContent.innerHTML = `
+                <div class="space-y-3">
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-zinc-500">Node ID</span>
+                        <div class="text-zinc-200 font-mono text-xs select-all bg-[#1e1e1e] p-1.5 rounded border border-[#333] mt-0.5">${node.id}</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <span class="text-[10px] uppercase font-bold text-zinc-500">Type</span>
+                            <div class="text-purple-400 font-medium capitalize">${node.type || 'text'}</div>
+                        </div>
+                        <div>
+                            <span class="text-[10px] uppercase font-bold text-zinc-500">Color Tag</span>
+                            <div class="text-zinc-300">${node.color ? 'Color #' + node.color : 'Default'}</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-1 bg-[#1e1e1e] p-2 rounded border border-[#333] text-center">
+                        <div><span class="text-[9px] text-zinc-500 block">X</span>${node.x}</div>
+                        <div><span class="text-[9px] text-zinc-500 block">Y</span>${node.y}</div>
+                        <div><span class="text-[9px] text-zinc-500 block">W</span>${node.width}</div>
+                        <div><span class="text-[9px] text-zinc-500 block">H</span>${node.height}</div>
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-zinc-500">Raw Content / Properties</span>
+                        <pre class="bg-[#1e1e1e] p-2.5 rounded border border-[#333] text-zinc-300 overflow-x-auto mt-1 max-h-64 whitespace-pre-wrap">${escapeHtml(JSON.stringify(node, null, 2))}</pre>
+                    </div>
+                </div>
+            `;
+            inspectorPanel.classList.remove('translate-x-full');
+            lucide.createIcons();
+        }
+
+        function closeInspector() {
+            selectedNodeId = null;
+            inspectorPanel.classList.add('translate-x-full');
+            renderCanvas();
+        }
+
+        // --- Viewport Pan & Zoom Mechanics ---
+        function updateTransform() {
+            canvasWorld.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+            zoomLevelEl.textContent = `${Math.round(scale * 100)}%`;
+        }
+
+        function fitToScreen() {
+            if (!canvasData.nodes || canvasData.nodes.length === 0) return;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            canvasData.nodes.forEach(n => {
+                minX = Math.min(minX, n.x);
+                minY = Math.min(minY, n.y);
+                maxX = Math.max(maxX, n.x + n.width);
+                maxY = Math.max(maxY, n.y + n.height);
+            });
+
+            const padding = 120;
+            const contentW = (maxX - minX) + padding * 2;
+            const contentH = (maxY - minY) + padding * 2;
+            const vw = viewport.clientWidth;
+            const vh = viewport.clientHeight;
+
+            const scaleX = vw / contentW;
+            const scaleY = vh / contentH;
+            scale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.15), 2.5);
+
+            panX = (vw / 2) - ((minX + maxX) / 2) * scale;
+            panY = (vh / 2) - ((minY + maxY) / 2) * scale;
+            updateTransform();
+        }
+
+        // --- Event Listeners Setup ---
+        function setupEventListeners() {
+            // Panning via Mouse Drag
+            viewport.addEventListener('mousedown', (e) => {
+                if (e.target.closest('#inspector-panel') || e.target.closest('header')) return;
+                isPanning = true;
+                startX = e.clientX - panX;
+                startY = e.clientY - panY;
+                viewport.style.cursor = 'grabbing';
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isPanning) return;
+                panX = e.clientX - startX;
+                panY = e.clientY - startY;
+                updateTransform();
+            });
+
+            window.addEventListener('mouseup', () => {
+                isPanning = false;
+                viewport.style.cursor = 'grab';
+            });
+
+            // Click background to deselect
+            viewport.addEventListener('click', (e) => {
+                if (e.target === viewport || e.target === canvasWorld || e.target.id === 'nodes-container') {
+                    closeInspector();
+                }
+            });
+
+            // Zoom via Mouse Wheel
+            viewport.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = 1.1;
+                const oldScale = scale;
+                
+                if (e.deltaY < 0) {
+                    scale = Math.min(scale * zoomFactor, 3.0);
+                } else {
+                    scale = Math.max(scale / zoomFactor, 0.1);
+                }
+
+                // Zoom centered on mouse pointer
+                const rect = viewport.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                panX = mouseX - (mouseX - panX) * (scale / oldScale);
+                panY = mouseY - (mouseY - panY) * (scale / oldScale);
+
+                updateTransform();
+            }, { passive: false });
+
+            // Toolbar Button Actions
+            document.getElementById('btn-zoom-in').addEventListener('click', () => {
+                scale = Math.min(scale * 1.2, 3.0);
+                updateTransform();
+            });
+
+            document.getElementById('btn-zoom-out').addEventListener('click', () => {
+                scale = Math.max(scale / 1.2, 0.1);
+                updateTransform();
+            });
+
+            document.getElementById('btn-fit').addEventListener('click', fitToScreen);
+
+            document.getElementById('btn-reset').addEventListener('click', () => {
+                scale = 1;
+                panX = 0;
+                panY = 0;
+                updateTransform();
+                fitToScreen();
+            });
+
+            document.getElementById('btn-sample').addEventListener('click', () => {
+                loadCanvasData(sampleCanvas, "Sample Project.canvas");
+            });
+
+            document.getElementById('close-inspector').addEventListener('click', closeInspector);
+
+            // Theme Toggle
+            document.getElementById('btn-theme').addEventListener('click', () => {
+                isDarkTheme = !isDarkTheme;
+                const html = document.documentElement;
+                const themeIcon = document.getElementById('theme-icon');
+                if (isDarkTheme) {
+                    html.classList.add('dark');
+                    html.classList.remove('light');
+                    themeIcon.setAttribute('data-lucide', 'sun');
+                    document.body.className = "bg-[#1e1e1e] text-[#d4d4d4] h-screen w-screen flex flex-col overflow-hidden transition-colors duration-200";
+                } else {
+                    html.classList.remove('dark');
+                    html.classList.add('light');
+                    themeIcon.setAttribute('data-lucide', 'moon');
+                    document.body.className = "bg-zinc-100 text-zinc-800 h-screen w-screen flex flex-col overflow-hidden transition-colors duration-200";
+                }
+                lucide.createIcons();
+            });
+
+            // Search Filter input
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value.trim();
+                if (searchQuery) {
+                    clearSearchBtn.classList.remove('hidden');
+                } else {
+                    clearSearchBtn.classList.add('hidden');
+                }
+                renderCanvas();
+            });
+
+            clearSearchBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                searchQuery = '';
+                clearSearchBtn.classList.add('hidden');
+                renderCanvas();
+            });
+
+            // File Upload Handler (.canvas)
+            const fileInput = document.getElementById('file-input');
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        loadCanvasData(parsed, file.name);
+                    } catch (err) {
+                        showToast("Failed to parse JSON file.", "error");
+                    }
+                };
+                reader.readAsText(file);
+                fileInput.value = '';
+            });
+
+            // Drag and Drop support for .canvas files
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropOverlay.classList.remove('hidden');
+            });
+
+            window.addEventListener('dragleave', (e) => {
+                if (e.clientX === 0 && e.clientY === 0) {
+                    dropOverlay.classList.add('hidden');
+                }
+            });
+
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropOverlay.classList.add('hidden');
+                const file = e.dataTransfer.files[0];
+                if (file && (file.name.endsWith('.canvas') || file.type === 'application/json')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const parsed = JSON.parse(event.target.result);
+                            loadCanvasData(parsed, file.name);
+                        } catch (err) {
+                            showToast("Failed to parse dropped JSON file.", "error");
+                        }
+                    };
+                    reader.readAsText(file);
+                } else {
+                    showToast("Please drop a valid .canvas file.", "error");
+                }
+            });
+
+            // Window resize adjustment
+            window.addEventListener('resize', () => {
+                // Keep viewport stable
+            });
+        }
+    </script>
+</body>
+</html>
